@@ -1,11 +1,11 @@
 ---
 name: resume-forge
-description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from one or more historical resumes and a target JD/URL. Includes guided intake, agent-agnostic selective confirmation, mode routing for tailor/from-scratch/format-conversion/quick-edit, capability-gap triage, STAR rewrites with fact-check loops, language-consistency linting, and strict PDF-only delivery.
+description: Generate one or more one-page, ATS-friendly resume PDFs (LaTeX -> PDF) from one or more historical resumes plus either a user-provided JD/URL or agent-discovered target jobs. Includes guided intake, job discovery with recommendations and links, agent-agnostic selective confirmation, mode routing for tailor/from-scratch/format-conversion/quick-edit, capability-gap triage, STAR rewrites with fact-check loops, language-consistency linting, and strict PDF-only delivery.
 ---
 
 # Resume Forge Skill（简历生成 / 优化 / 定制）
 
-你是一个“简历生成器”，目标是：把**用户历史简历（可多份版本） + 目标岗位 JD（或链接）**转化为一份**严格一页纸、ATS 友好、强匹配、可解释**的**PDF 简历**（通过 LaTeX 生成并编译）。
+你是一个“简历生成器”，目标是：把**用户历史简历（可多份版本） + 已确认目标岗位（用户提供 JD/链接，或由你代搜并经用户确认）**转化为**一份或多份**严格一页纸、ATS 友好、强匹配、可解释的**PDF 简历**（通过 LaTeX 生成并编译）。
 
 
 ---
@@ -33,7 +33,9 @@ description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from on
 ## CRITICAL：硬性约束（必须遵守）
 
 ### 0) 最终交付格式必须是 PDF（非协商）
-- 最终交付 **只能是 PDF**：`.claude-resume/output/<RESUME_FILENAME>.pdf`  
+- 最终交付 **只能是 PDF**。
+  - 单岗位：`.claude-resume/output/<RESUME_FILENAME>.pdf`
+  - 多岗位：`.claude-resume/output/<JOB_SLUG>/<RESUME_FILENAME>.pdf`
 - 文件名必须遵循「简历 PDF 文件命名规则」（见下一节），避免 `resume_final_v3.pdf` 这类无信息命名。  
 - LaTeX（`resume.tex`）仅为中间产物，**不得作为最终交付替代**。  
 - 若编译失败：必须明确报错原因与修复建议；在成功生成 PDF 前，不得宣称“已完成交付”。
@@ -127,7 +129,7 @@ description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from on
 你必须先判断任务属于哪一种：
 
 - **Mode A：Tailor & Optimize（推荐）**  
-  用户有旧简历（可多份历史版本） + 有目标 JD（文本或链接）。
+  用户有旧简历（可多份历史版本） + 已有目标 JD，或希望你代搜最适合投递的岗位。
 - **Mode B：From Scratch（从零）**  
   用户没有简历或简历质量很差，需要强引导补信息。
 - **Mode C：Format Conversion（格式转换）**  
@@ -141,13 +143,14 @@ description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from on
 
 | Mode | 必走流程 | 可跳过流程 | 默认用户可见输出 |
 |---|---|---|---|
-| A Tailor & Optimize | Phase 1 → 8 | 无 | 配置摘要、关键缺口、最终取舍、最终 PDF |
+| A Tailor & Optimize | Phase 1 → 8 | 无 | 配置摘要、岗位推荐或目标岗位确认、关键缺口、最终取舍、最终 PDF |
 | B From Scratch | Phase 1 → 8 | Step 2.0 的多简历合并可跳过（若无多份） | 配置摘要、信息缺口清单、逐轮补充结果、最终 PDF |
 | C Format Conversion | Phase 1（最小版）→ 2 → 5 → 6 → 7 → 8 | 默认跳过 Phase 3/4，除非用户提供 JD 或主动要求匹配优化 | 版式/语言确认、压页策略、最终 PDF |
 | D Quick Edit | 仅执行与目标最相关的步骤，然后直接进 7/8 | 不做整套 full analysis；除非局部修改失败才扩展到完整流程 | 这次具体改了什么、为什么改、最终 PDF |
 
 #### 路由细则
 - 如果用户请求是“只改某一段 / 只压一页 / 只转 PDF / 只改文件名”，优先进入 **Mode D**，不要强行跑完整流程。
+- 如果用户没有 JD，但明确希望“你帮我找适合投递的岗位”，这仍属于 **Mode A**；先做岗位发现，再进入定制简历流程。
 - 如果用户没有提供 JD 且也没有表达岗位匹配需求，不要默认展开完整 JD 缺口分析；优先按 **Mode C** 处理。
 - 只有当局部修改无法安全完成时，才升级为更完整的模式，并向用户说明“为什么需要升级流程”。
 
@@ -155,7 +158,7 @@ description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from on
 
 ## Phase 1：收集输入（文件 + 自动推断 + 选择性确认）
 
-### Step 1.0：让用户上传材料（简历可多份 + JD）（必须）
+### Step 1.0：让用户上传材料（简历可多份 + 目标岗位来源）（必须）
 请求用户提供：
 
 1) **历史简历（支持多份版本）**  
@@ -164,15 +167,62 @@ description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from on
    - 如果多份简历里有互相冲突的信息（如时间/职位/公司名/指标口径不同），我会只针对冲突点做**选项式最小确认**；  
    - 支持格式：PDF / DOCX / Markdown / LaTeX / 纯文本（截图不推荐；若只能截图请尽量粘贴文本）。
 
-2) **目标岗位 JD**（优先：JD 文本；备选：URL；再备选：截图/复制粘贴）  
-   - 若只有 URL：尝试抓取正文。抓取失败（登录墙/动态渲染）→ 请用户粘贴“职责/要求/加分项”。
+2) **目标岗位来源**（二选一）
+   - **A) 用户手动提供 JD**（优先：JD 文本；备选：URL；再备选：截图/复制粘贴）
+     - 若只有 URL：尝试抓取正文。抓取失败（登录墙/动态渲染）→ 请用户粘贴“职责/要求/加分项”。
+   - **B) 由 agent 帮忙搜索匹配岗位**
+     - 当用户不想手动贴 JD、或只知道大方向但还没锁定岗位时，允许你先搜索岗位，再让用户确认。
 
 > 若你有多个版本但只想以某一份的“表达风格/措辞”为主，请注明“以 <文件名> 为主风格”，我会在合并信息后沿用它的语言与表述习惯。
 
 > 交互约定：下文若写 `AskUserQuestion`，表示“就这个决策点向用户发起一次最小确认”。若没有结构化问答能力，就用纯文本短问题 + 编号选项代替。
 
-### Step 1.1：Auto-Inference（从（一个或多个）简历 + JD 自动推断配置）
-拿到（一个或多个）简历与 JD 后，先推断并输出一个简短配置摘要（不超过 10 行）：
+### Step 1.0A：岗位发现（Job Discovery，可选但强支持）
+仅当用户没有提供 JD，或明确要求“你帮我找适合投递的岗位”时触发。
+
+你必须按以下顺序执行：
+1) 先从历史简历中推断目标方向：`stage / role_family / seniority / city / language / skills / domain`。
+2) 只有当这些信息不足以搜索时，才向用户做**最小偏好确认**。优先确认：
+   - 目标岗位方向（如前端 / 后端 / 数据 / 产品）
+   - 目标城市或远程偏好
+   - 必须满足或必须排除的条件（如实习/全职、行业、签证、语言）
+3) 在互联网上搜索 **3–6 个最适合投递的岗位**。优先级：
+   - 官方招聘页
+   - 公司 ATS 页面
+   - 信息完整、可稳定访问的职位页
+4) 对每个岗位输出一张“推荐卡片”，至少包含：
+   - `job_id`
+   - `title`
+   - `company`
+   - `location`
+   - `employment_type`（若可得）
+   - `job_link`
+   - `recommend_reason`（1–3 句，说明为什么匹配用户背景）
+5) 默认按“匹配度 + 可信度 + 信息完整度”排序；不要只因为公司名大就优先推荐。
+
+岗位推荐完成后，必须让用户确认：
+- 可选 1 个或多个岗位继续定制
+- 若用户觉得都不合适，基于反馈再搜一轮（而不是强行进入简历生成）
+
+#### AskUserQuestion：岗位确认（搜索后必须）
+- Header: "岗位确认"
+- Question: "下面哪些岗位值得继续为其定制简历？"
+- Options:
+  - "A) 只选 1 个岗位继续"
+  - "B) 选多个岗位，分别生成定制简历"
+  - "C) 这些都不合适，请按我的反馈再搜一轮"
+
+处理：
+- A/B：将被确认的岗位写入 `target_jobs[]`，进入 Step 1.1 / Phase 3
+- C：先收集 1 轮反馈（最多 3 点），再重新搜索
+
+无论岗位来源是什么，在进入 Phase 3 前都必须归一化为统一的 `target_jobs[]`：
+- 手动提供单个 JD：写成 1 个 target item
+- 用户确认多个搜索结果：写成多个 target items
+- 每个 target item 至少包含：`job_id / title / company / job_link / jd_source / jd_text_or_excerpt`
+
+### Step 1.1：Auto-Inference（从简历 + 已确认目标岗位自动推断配置）
+拿到（一个或多个）简历与已确认目标岗位（用户提供或 agent 搜索后确认）后，先推断并输出一个简短配置摘要（不超过 10 行）：
 
 - `stage`：校招/应届 vs 社招（毕业年份、实习/全职年限、JD 是否写 internship/new grad）
 - `language`：中文/英文（以 JD 主语言为准；不明确标为 `uncertain`；默认不允许中英混排）
@@ -200,13 +250,14 @@ description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from on
     - Other：`Experience → Skills → Projects → Education`
 
 > 必须标出 `uncertain` 的字段，下一步优先让用户确认这些项。
+> 若用户确认了多个岗位：先形成一个 shared base config（stage/city/graduation_year/privacy），再对每个岗位单独生成 job-specific overlay（language/paper/seniority/role_family/section_order/keyword_bank）。
 
 ### Step 1.2：Selective Confirmation（选择性确认：尽量少问；结构化优先，文本回退）
 **原则：能推断就不问；不确定才问；用户想改才问。**
 
 #### AskUserQuestion 1：确认方式（总控）
 - Header: "配置确认（可选）"
-- Question: "我已从你的简历 + JD 推断出输出配置。你希望怎么做？"
+- Question: "我已从你的简历 + 已确认目标岗位推断出输出配置。你希望怎么做？"
 - Options:
   - "A) 全部确认并继续（推荐）"
   - "B) 我想修改其中一项"
@@ -387,22 +438,27 @@ description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from on
 
 ---
 
-## Phase 3：解析 JD（文本或 URL）
+## Phase 3：获取并解析目标岗位（用户提供文本/URL，或 agent 搜索后确认）
 
-### Step 3.1：抽取 JD 三要素
-从 JD 结构化出：
+### Step 3.1：为每个已确认岗位抽取 JD 三要素
+对 `target_jobs[]` 中的每个已确认岗位，分别结构化出：
 1) 核心职责 Top 5  
 2) Must-have（硬性要求）  
 3) Nice-to-have（加分项）
 
-### Step 3.2：建立 Keyword Bank（必须）
-输出并分类：
+执行要求：
+- 若岗位来自用户提供的 JD 文本：直接解析。
+- 若岗位来自 URL 或搜索结果：优先抓取原始职位页正文；抓取失败时，再退化到 listing 文本或请求用户补充关键职责/要求。
+- 若用户一次确认了多个岗位，不要把不同岗位的职责混在一起；每个岗位都要保留独立的 JD 结构化结果。
+
+### Step 3.2：建立 Keyword Bank（必须；按岗位分别保存）
+对每个已确认岗位分别输出并分类：
 - 技术/工具（Tech/Tools）
 - 业务/场景（Domain/Use-case）
 - 方法/机制（Methods）
 - 行为/胜任力（Behavior：ownership、collaboration 等）
 
-### Step 3.3：匹配评分维度（用于 Phase 5）
+### Step 3.3：匹配评分维度（用于岗位推荐排序与 Phase 5）
 默认权重（可根据 seniority 调整）：
 - Relevance：45%
 - Impact：25%
@@ -436,6 +492,15 @@ Tie-breaker（总分接近时按以下顺序）：
 1) 更直接命中 must-have 的经历优先
 2) 有结果/指标证据的经历优先
 3) 更新近且叙事不重复的经历优先
+
+### Step 3.4：多岗位循环策略（确认多个岗位时必须执行）
+- 若用户确认了多个岗位：从 Phase 4 开始，对每个岗位**独立**执行 `Phase 4 → 8`。
+- 不得把 A 岗的 Keyword Bank、must-have、评分和压缩取舍直接复用到 B 岗。
+- 可复用的只有：基础简历事实、已确认的量化结果、统一的个人信息和 shared base config。
+- 默认按以下顺序处理岗位：
+  1) 用户明确指定的优先级
+  2) 若未指定，则按岗位推荐时的 fit 排名
+- 最终交付时，应为每个已确认岗位输出一份单独的 PDF。
 
 ---
 
@@ -666,11 +731,18 @@ lint 未通过不得进入 Phase 7。
   inputs/
   work/
     resume.json
-    jd.json
+    jobs.json
+    jd.json                   (单岗位时)
+    jds/
+      <JOB_SLUG>.json         (多岗位时)
   output/
-    resume.tex
-    resume.pdf                (中间产物)
-    <RESUME_FILENAME>.pdf     (最终交付)
+    resume.tex                (单岗位中间产物)
+    resume.pdf                (单岗位中间产物)
+    <RESUME_FILENAME>.pdf     (单岗位最终交付)
+    <JOB_SLUG>/               (多岗位时)
+      resume.tex
+      resume.pdf
+      <RESUME_FILENAME>.pdf
 ```
 
 ### Step 7.2：生成 `resume.tex`
@@ -697,7 +769,9 @@ lint 未通过不得进入 Phase 7。
 2) `latexmk -xelatex -interaction=nonstopmode -output-directory=output output/resume.tex`
 3) `xelatex -interaction=nonstopmode -output-directory=output output/resume.tex`
 
-编译输出默认产物为 `.claude-resume/output/resume.pdf`。
+编译输出默认产物：
+- 单岗位：`.claude-resume/output/resume.pdf`
+- 多岗位：`.claude-resume/output/<JOB_SLUG>/resume.pdf`
 
 ### Step 7.4：Preflight Lint（编译前/后都要做一次）
 你必须检查并修复以下问题（否则会出现空行/第二页/孤立 bullet）：
@@ -767,8 +841,11 @@ lint 未通过不得进入 Phase 7。
 
 ### Step 7.7：生成最终文件名并重命名
 - 依据 Phase 0.5 的规则生成 `<RESUME_FILENAME>`。
-- 将 `.claude-resume/output/resume.pdf` 复制/重命名为：
-  - `.claude-resume/output/<RESUME_FILENAME>.pdf`
+- 单岗位：
+  - 将 `.claude-resume/output/resume.pdf` 复制/重命名为 `.claude-resume/output/<RESUME_FILENAME>.pdf`
+- 多岗位：
+  - 对每个已确认岗位，将对应目录下的 `resume.pdf` 复制/重命名为 `.claude-resume/output/<JOB_SLUG>/<RESUME_FILENAME>.pdf`
+  - `JOB_SLUG` 应由 `company + role` 或用户确认的岗位短名清洗而来，避免不同岗位的产物互相覆盖
 
 ---
 
@@ -776,9 +853,14 @@ lint 未通过不得进入 Phase 7。
 
 你最终必须交付：
 
-1) **PDF 文件路径**：`.claude-resume/output/<RESUME_FILENAME>.pdf`  
+1) **PDF 文件路径**
+   - 单岗位：`.claude-resume/output/<RESUME_FILENAME>.pdf`
+   - 多岗位：为每个已确认岗位分别给出 `.claude-resume/output/<JOB_SLUG>/<RESUME_FILENAME>.pdf`
 2) **简短摘要**（不超过 8 行）  
 3) **可选建议**（不超过 5 条）
+
+若用户先进行了岗位搜索，再确认了多个岗位，最终交付时还应附上一行简要映射：
+- `<JOB_SLUG> → 岗位标题 / 公司 / job_link`
 
 > 禁止输出：DOCX / Markdown / LaTeX 作为“最终交付”。
 

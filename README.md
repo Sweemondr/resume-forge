@@ -1,13 +1,14 @@
 # Resume Forge
 
-`resume-forge` is a resume-generation skill for AI coding agents. It turns one or more historical resumes plus a target job description into a one-page, ATS-friendly PDF resume generated through LaTeX.
+`resume-forge` is a resume-generation skill for AI coding agents. It turns one or more historical resumes plus either a user-provided JD or agent-discovered target jobs into one or more one-page, ATS-friendly PDF resumes generated through LaTeX.
 
 ## What It Does
 
-- Guides the user through resume intake from multiple historical resume versions and a target JD
+- Guides the user through resume intake from multiple historical resume versions and either a target JD or an agent-led job search flow
 - Auto-infers resume configuration such as language, stage, paper size, seniority, and section order
 - Supports tailor/optimize, from-scratch, format-conversion, and quick-edit workflows
 - Uses agent-agnostic confirmation patterns: structured prompts when available, plain-text fallback otherwise
+- Can search for 3-6 suitable jobs, provide recommendation reasons plus job links, and wait for user confirmation before tailoring
 - Merges experience, project, and skill data across resume versions with minimal conflict confirmation
 - Rewrites bullets with a STAR-style structure while keeping every claim grounded in user-provided facts
 - Enforces single-language consistency for bullets unless the JD explicitly requires bilingual output
@@ -33,11 +34,12 @@
 ## Typical Workflow
 
 1. Provide one or more historical resumes.
-2. Provide the target job description text or URL.
-3. Let the agent infer the initial configuration.
-4. Confirm only the uncertain or user-overridden fields.
-5. Generate and refine the resume content.
-6. Compile LaTeX to PDF and keep iterating until the resume is exactly one page.
+2. Either provide the target job description text/URL or let the agent search for suitable jobs.
+3. Confirm one or more target jobs.
+4. Let the agent infer the initial configuration.
+5. Confirm only the uncertain or user-overridden fields.
+6. Generate and refine the resume content for each confirmed job.
+7. Compile LaTeX to PDF and keep iterating until each resume is exactly one page.
 
 ## Expected Output
 
@@ -45,6 +47,12 @@ The skill writes intermediate files under `.claude-resume/` and treats the final
 
 ```text
 .claude-resume/output/<RESUME_FILENAME>.pdf
+```
+
+If the user confirms multiple target jobs in one run, the skill should place each tailored version under its own job folder:
+
+```text
+.claude-resume/output/<JOB_SLUG>/<RESUME_FILENAME>.pdf
 ```
 
 `resume.tex` is considered an intermediate artifact and must not replace the final PDF delivery.
@@ -58,6 +66,7 @@ The skill writes intermediate files under `.claude-resume/` and treats the final
 ## Example Prompt
 
 ```text
-Use the resume-forge skill to merge my two historical resumes with this backend engineer JD,
-generate an ATS-friendly one-page Chinese PDF resume, and ask me only about ambiguous facts.
+Use the resume-forge skill to review my historical resumes, search for the best backend roles for me,
+show each recommended job with a reason and link, let me choose which ones to target,
+and then generate a one-page tailored PDF resume for each confirmed role.
 ```
