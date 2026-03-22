@@ -6,10 +6,13 @@
 
 - Guides the user through resume intake from multiple historical resume versions and a target JD
 - Auto-infers resume configuration such as language, stage, paper size, seniority, and section order
+- Supports tailor/optimize, from-scratch, format-conversion, and quick-edit workflows
+- Uses agent-agnostic confirmation patterns: structured prompts when available, plain-text fallback otherwise
 - Merges experience, project, and skill data across resume versions with minimal conflict confirmation
 - Rewrites bullets with a STAR-style structure while keeping every claim grounded in user-provided facts
 - Enforces single-language consistency for bullets unless the JD explicitly requires bilingual output
 - Compiles to PDF and blocks final delivery until the output passes a one-page self-check
+- Stops auto-compression gracefully when further shrinking would damage relevance or readability
 - Applies resume filename rules for campus/intern and experienced candidates
 
 ## Repository Structure

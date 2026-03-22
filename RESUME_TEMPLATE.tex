@@ -21,9 +21,11 @@
 \setlist[itemize]{leftmargin=*,topsep=1pt,itemsep=0.2pt,parsep=0pt,partopsep=0pt}
 
 \usepackage[hidelinks]{hyperref}
+\usepackage{xurl}
 \usepackage{tabularx}
 \usepackage{titlesec}
 \usepackage{microtype}
+\urlstyle{same}
 
 % Section title: smaller vertical gaps.
 \titleformat{\section}{\normalsize\bfseries}{}{0pt}{}[\vspace{-3pt}\titlerule]
@@ -32,16 +34,21 @@
 % Header spacing: tighter.
 \newcommand{\name}[1]{\begin{center}\LARGE\bfseries #1\end{center}\vspace{-4mm}}
 \newcommand{\contact}[1]{\begin{center}\footnotesize #1\end{center}\vspace{-4mm}}
+\newcommand{\summary}[1]{\begin{center}\small #1\end{center}\vspace{-3mm}}
 
 % Entries
 \newcommand{\entry}[4]{\textbf{#1} \hfill #2\\ \textit{#3} \hfill \textit{#4}\\}
 \newcommand{\proj}[2]{\textbf{#1} \hfill \textit{#2}\\}
+\newcommand{\skillrow}[2]{\textbf{#1} & #2 \\}
 
 \begin{document}
 
 % ====== Header ======
 \name{YOUR NAME}
-\contact{City \quad|\quad +1-xxx \quad|\quad \href{mailto:you@email.com}{you@email.com}}
+\contact{City \quad|\quad +1-xxx \quad|\quad \href{mailto:you@email.com}{you@email.com} \quad|\quad \href{https://github.com/you}{GitHub}}
+
+% Optional summary: render only when it improves matching and still fits on one page.
+% \summary{Backend engineer with experience in distributed systems, observability, and API platform work.}
 
 % ====== Sections (replace titles per language) ======
 \section{Education}
@@ -61,9 +68,18 @@
 
 \section{Skills}
 \begin{tabularx}{\linewidth}{@{}l X@{}}
-  \textbf{Languages} & ... \\
-  \textbf{Frameworks} & ... \\
-  \textbf{Tools} & ... \\
+  \skillrow{Languages}{...}
+  \skillrow{Frameworks}{...}
+  \skillrow{Tools}{...}
+  % Optional rows:
+  % \skillrow{Domain}{...}
+  % \skillrow{Other}{...}
 \end{tabularx}
+
+% Optional awards / honors:
+% \section{Awards}
+% \begin{itemize}
+%   \item Scholarship / Competition / Honor closely related to the target role.
+% \end{itemize}
 
 \end{document}

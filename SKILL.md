@@ -1,6 +1,6 @@
 ---
 name: resume-forge
-description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from one or more historical resumes and a target JD/URL. Includes guided intake, auto-inference with selective confirmation, capability-gap triage (skip/reframe/ask/hard-gap), STAR rewrites with fact-check loops, language-consistency linting, and strict PDF-only delivery.
+description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from one or more historical resumes and a target JD/URL. Includes guided intake, agent-agnostic selective confirmation, mode routing for tailor/from-scratch/format-conversion/quick-edit, capability-gap triage, STAR rewrites with fact-check loops, language-consistency linting, and strict PDF-only delivery.
 ---
 
 # Resume Forge Skill（简历生成 / 优化 / 定制）
@@ -107,6 +107,19 @@ description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from on
 - 默认输出写入 `.claude-resume/`，避免污染项目根目录。
 - 若处于 git 仓库：提醒用户不要提交含个人信息文件（建议 `.gitignore`）。
 
+### 5) 交互兼容性（结构化优先，文本回退）
+- 下文出现的 `AskUserQuestion` 是**逻辑动作**，不绑定某个特定 UI 或工具。
+- 若运行环境支持按钮/单选/多选：优先用结构化提问。
+- 若运行环境**不**支持结构化提问：改用**纯文本短问题 + A/B/C 选项**，保持同样的默认项与决策逻辑。
+- 每一轮默认只问**一个阻塞决策**；只有当多个字段都无法安全推断时，才在同一轮连续问 2–3 个短问题。
+- 每个问题的**第一个选项都应是推荐/默认项**，降低输入负担。
+
+### 6) 输出纪律（默认少打扰用户）
+- 允许你在内部生成完整表格、JSON、评分明细、压缩日志；这些属于**工作产物**，不是默认都要展示给用户。
+- 默认只向用户展示：最终配置结论、关键缺口、必须确认的事实、最终取舍、交付结果。
+- 只有在以下情况才展开完整分析表：用户明确要求看细节、你需要用户在多个方案间做取舍、或存在明显冲突/风险需要解释。
+- 若某一步既可“内部完成”又可“对用户完整展示”，默认先内部完成，再给用户一个**5 行内摘要**。
+
 ---
 
 ## Phase 0：Detect Mode（先判断用户要什么）
@@ -119,8 +132,24 @@ description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from on
   用户没有简历或简历质量很差，需要强引导补信息。
 - **Mode C：Format Conversion（格式转换）**  
   用户只想“把已有简历转成一页纸 LaTeX 并输出 PDF”，不强调 JD 匹配。
+- **Mode D：Quick Edit（局部修改）**
+  用户只想改某一部分，例如“只改一段经历”“只压成一页”“只改文件名/语言/版式”。
 
-> Mode A/B/C 都必须遵守“PDF-only + One Page + Truth Only + 单语言一致性”。
+> Mode A/B/C/D 都必须遵守“PDF-only + One Page + Truth Only + 单语言一致性”。
+
+### 路由规则（必须先裁剪流程，再执行）
+
+| Mode | 必走流程 | 可跳过流程 | 默认用户可见输出 |
+|---|---|---|---|
+| A Tailor & Optimize | Phase 1 → 8 | 无 | 配置摘要、关键缺口、最终取舍、最终 PDF |
+| B From Scratch | Phase 1 → 8 | Step 2.0 的多简历合并可跳过（若无多份） | 配置摘要、信息缺口清单、逐轮补充结果、最终 PDF |
+| C Format Conversion | Phase 1（最小版）→ 2 → 5 → 6 → 7 → 8 | 默认跳过 Phase 3/4，除非用户提供 JD 或主动要求匹配优化 | 版式/语言确认、压页策略、最终 PDF |
+| D Quick Edit | 仅执行与目标最相关的步骤，然后直接进 7/8 | 不做整套 full analysis；除非局部修改失败才扩展到完整流程 | 这次具体改了什么、为什么改、最终 PDF |
+
+#### 路由细则
+- 如果用户请求是“只改某一段 / 只压一页 / 只转 PDF / 只改文件名”，优先进入 **Mode D**，不要强行跑完整流程。
+- 如果用户没有提供 JD 且也没有表达岗位匹配需求，不要默认展开完整 JD 缺口分析；优先按 **Mode C** 处理。
+- 只有当局部修改无法安全完成时，才升级为更完整的模式，并向用户说明“为什么需要升级流程”。
 
 ---
 
@@ -139,6 +168,8 @@ description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from on
    - 若只有 URL：尝试抓取正文。抓取失败（登录墙/动态渲染）→ 请用户粘贴“职责/要求/加分项”。
 
 > 若你有多个版本但只想以某一份的“表达风格/措辞”为主，请注明“以 <文件名> 为主风格”，我会在合并信息后沿用它的语言与表述习惯。
+
+> 交互约定：下文若写 `AskUserQuestion`，表示“就这个决策点向用户发起一次最小确认”。若没有结构化问答能力，就用纯文本短问题 + 编号选项代替。
 
 ### Step 1.1：Auto-Inference（从（一个或多个）简历 + JD 自动推断配置）
 拿到（一个或多个）简历与 JD 后，先推断并输出一个简短配置摘要（不超过 10 行）：
@@ -170,7 +201,7 @@ description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from on
 
 > 必须标出 `uncertain` 的字段，下一步优先让用户确认这些项。
 
-### Step 1.2：Selective Confirmation（选择性确认：尽量少问）
+### Step 1.2：Selective Confirmation（选择性确认：尽量少问；结构化优先，文本回退）
 **原则：能推断就不问；不确定才问；用户想改才问。**
 
 #### AskUserQuestion 1：确认方式（总控）
@@ -246,6 +277,7 @@ description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from on
   - "D) 强脱敏（公司名/项目名都脱敏）"
 
 > 完成以上（或跳过）后，用不超过 5 行给出最终配置汇总（stage/language/paper/seniority/privacy/role_family/section_order）。其中 `section_order` 为自动选择项，不需要用户确认。
+> 默认只展示“最终结论 + uncertain 项是否已确认”；不要把整套问答记录原样倾倒给用户。
 
 ---
 
@@ -263,7 +295,12 @@ description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from on
    - 只就冲突点向用户发起 1 轮“选项式最小确认”，确认后再写入 merged resume。  
 5) **来源标注（provenance）**：对每段经历/项目记录 `source_refs`（来自哪些文件），便于追溯。
 
-合并完成后，你必须输出一个“提取清单”（最多 12 条）：列出合并后的经历/项目，并标注哪些是“旧版本才有、最新版本缺失”的项，供用户快速决定保留/删除。
+合并完成后，你必须先在内部形成完整提取清单；默认对用户只展示一个“提取摘要”（最多 6 条）：
+- 哪些经历/项目被合并保留；
+- 哪些是“旧版本才有、最新版本缺失”的项；
+- 哪些存在冲突，确实需要用户确认。
+
+仅当用户明确要看完整细节时，再展开完整“提取清单”（最多 12 条）。
 
 ### Step 2.1：把简历转为可编辑文本（支持多份）
 按文件类型处理（优先自动，失败再让用户粘贴）。若用户上传多份简历：对每个文件分别处理并保留 `source_id/filename` 对应关系；合并逻辑见 Step 2.0：
@@ -292,11 +329,14 @@ description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from on
     "phone": "",
     "email": "",
     "location": "",
-    "links": ["", ""]
+    "links": [
+      {"label":"LinkedIn","url":""},
+      {"label":"GitHub","url":""}
+    ]
   },
   "headline": {
     "target_title": "",
-    "summary_2_lines": ""
+    "summary": ""
   },
   "education": [
     {"school":"","degree":"","major":"","start":"","end":"","gpa":"","highlights":[],"source_refs":["r1"]}
@@ -325,14 +365,22 @@ description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from on
     "languages":[],
     "frameworks":[],
     "tools":[],
-    "domain":[]
+    "domain":[],
+    "other":[]
   },
   "awards":[{"name":"","date":"","note":"","source_refs":["r1"]}]
 }
 ```
 
+渲染映射约束（必须遵守）：
+- `headline.summary` 是**可选块**：只有当它能提升匹配度且页数预算允许时才渲染；否则留空。
+- `basics.links` 必须保留 `label + url`，便于安全生成 LaTeX 链接。
+- `skills.domain` / `skills.other` 不一定单独占一行；可以在最终渲染时并入 `Tools` 或 `Other`。
+- `awards` 默认作为“证据库”保留；除非其相关性足够高且版面允许，否则优先并入 `Education` 或相关经历 highlight，而不是强制单独成节。
+- 不是每个 JSON 字段都必须以“独立 section”出现；最终渲染要服从一页纸和相关性优先原则。
+
 ### Step 2.3：快速质量诊断（最多 10 条）
-输出一个“问题清单”：
+先在内部形成完整诊断，再默认向用户输出一个“问题摘要”（最多 5 条）：
 - 影响 JD 匹配的最大缺口（如：缺量化、缺 ownership、关键词不足）
 - 影响一页纸的最大风险（如：经历太多、bullets 太长、重复内容、出现空 bullet/占位符）
 - 你下一步会怎么做（对应 Phase 3/4/5/6/7）
@@ -362,11 +410,38 @@ description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from on
 - Recency：10%
 - Credibility：5%
 
+评分 rubric（默认 1–5 分；必须可复现）：
+- `Relevance`
+  - 5 = 直接命中 JD 的 must-have / 核心职责，且有明确证据
+  - 3 = 场景相近或命中关键词，但证据链不完整
+  - 1 = 仅弱相关或基本不相关
+- `Impact`
+  - 5 = 有明确结果，且有指标/范围/基线
+  - 3 = 有清晰产出，但结果不够量化
+  - 1 = 只有任务描述，没有结果
+- `Seniority Signal`
+  - 5 = 体现 owner / 方案决策 / 跨团队推动 / 复杂度管理
+  - 3 = 独立执行较完整模块
+  - 1 = 主要是支持性执行
+- `Recency`
+  - 5 = 最近 1–2 年且仍与目标方向强相关
+  - 3 = 时间较久但方向仍相关
+  - 1 = 过旧且方向已明显偏离
+- `Credibility`
+  - 5 = 事实完整、时间清晰、结果可解释、来源一致
+  - 3 = 主体可信，但存在 1–2 个模糊字段
+  - 1 = 信息缺失多、冲突多或无法解释
+
+Tie-breaker（总分接近时按以下顺序）：
+1) 更直接命中 must-have 的经历优先
+2) 有结果/指标证据的经历优先
+3) 更新近且叙事不重复的经历优先
+
 ---
 
 ## Phase 4：新经历补充 + 能力缺口三段式处理（Skip / Reframe / Ask / Hard Gap）
 
-### Step 4.0：AskUserQuestion — 是否有新经历/新成果要补充？
+### Step 4.0：是否有新经历/新成果要补充？（结构化优先，文本回退）
 - Header: "新经历补充（可选）"
 - Question: "在开始匹配分析前：你最近是否有新的经历/项目/成果想补充进简历？"
 - Options:
@@ -386,7 +461,9 @@ description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from on
 ### Step 4.1：关键能力覆盖度检查（Coverage Check）
 你必须把 JD Must-have + Top 5 职责映射为“关键能力清单”，并在简历中寻找证据（bullets/项目/技能）。
 
-输出表格：
+先在内部形成完整 coverage 表；默认对用户只展示最关键的 3–5 个能力项（尤其是 Low / Medium 和需要确认的项）。
+
+完整表格模板：
 
 | 关键能力 | JD 依据 | 现有证据（来自哪段经历/哪条 bullet） | 置信度 | 下一步动作 |
 |---|---|---|---|---|
@@ -414,7 +491,7 @@ description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from on
 3) 标注命中的 JD 关键词（1 行）
 4) 明确提示：**请用户确认改写是否完全符合事实**
 
-#### AskUserQuestion：改写确认（每个能力一组）
+#### AskUserQuestion：改写确认（每个能力一组；若无结构化能力则转为 A/B/C 文本选项）
 - Header: "改写确认"
 - Question: "我用现有经历换角度突出【能力 X】。以下改写是否准确？"
 - Options:
@@ -467,10 +544,14 @@ description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from on
    - **短期补足（1–2 周）**：学习路径 + 小练习/小项目建议  
    - **面试应对**：如何诚实说明正在补足、如何用相近经验做迁移（禁止虚构）
 
-3) **在线资源搜索（必须执行）**  
-   - 在互联网上搜索 **3–6 个高质量资源**（官方文档/权威课程/经典书/高质量教程优先）  
-   - 按类别输出：入门 / 实战 / 面试导向  
-   - 每个资源提供：标题 + 1 句推荐理由 + 链接
+3) **补充资源（条件触发，不要喧宾夺主）**
+   - 默认先完成简历主任务，只简短说明“如果你想补这个硬缺口，我可以继续给你补足资源”。
+   - 仅在以下情况之一满足时，才联网搜索 **3–6 个高质量资源**：
+     - 用户明确表示想补这个能力；
+     - 该硬缺口是本轮最关键风险，且用户愿意一起制定补足计划；
+     - 运行环境允许联网且你判断这一步能直接帮助用户做下一步行动。
+   - 资源优先级：官方文档 / 权威课程 / 经典书 / 高质量教程。
+   - 输出格式：标题 + 1 句推荐理由 + 链接；按“入门 / 实战 / 面试导向”分类。
 
 ---
 
@@ -481,7 +562,13 @@ description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from on
 - **不根据**“经历是否丰富/条目多少”来调整 section 顺序；只在用户明确提出“想换顺序”时才改。
 
 ### Step 5.1：候选经历池打分与取舍（必须可解释）
-把所有经历（工作/实习/项目）列为候选池，建议 8–15 条，输出表格：
+把所有经历（工作/实习/项目）列为候选池，建议内部评估 8–15 条，并按 Step 3.3 的 rubric 打分。
+
+总分建议算法：
+- `Total = Relevance*0.45 + Impact*0.25 + Seniority*0.15 + Recency*0.10 + Credibility*0.05`
+- 分值可保留 1 位小数；若需要排序稳定性，使用 Step 3.3 的 tie-breaker。
+
+内部完整表格：
 
 | # | 经历 | Relevance | Impact | Seniority | Recency | Credibility | Total | 结论 |
 |---|------|-----------|--------|-----------|--------|------------|-------|------|
@@ -493,11 +580,16 @@ description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from on
 - **保留**：命中 JD 哪条职责/关键词 + 最强证据是什么  
 - **剔除**：不相关/过旧/缺乏结果/重复表达/版面不足
 
+默认对用户的可见输出应更轻量：
+- 保留项：展示最重要的 3–6 条
+- 备选/剔除项：只展示 1–3 条最有争议或最需要说明的取舍
+- 如果没有争议，不必把整张打分表原样展示给用户
+
 ### Step 5.2：版面分配（默认策略，可微调）
 - 校招/应届：Education 15% / Projects 35–45% / Internship/Experience 30–35% / Skills 8–12%  
 - 社招：Summary 0–6% / Experience 60–70% / Projects 8–15% / Skills 10–15%
 
-### Step 5.3：AskUserQuestion（可选）确认取舍
+### Step 5.3：AskUserQuestion（可选）确认取舍；结构化优先，文本回退
 仅当存在“争议取舍”或用户明确表示“必须保留某段”时触发。
 
 - Header: "取舍确认（可选）"
@@ -542,10 +634,16 @@ description: Generate a one-page, ATS-friendly resume PDF (LaTeX -> PDF) from on
 > C) 周期：用了多久上线？（天/周/月）
 
 ### Step 6.3：输出改写对照（raw → optimized）
-每段经历输出：
-- 3–5 条 optimized bullets
-- 每条标注命中的 JD 关键词（1 行）
-- 对关键改写点解释“为什么这样写”（1 句）
+先在内部完成全部改写，再按需展示对照。
+
+默认用户可见输出：
+- 只展示本轮**被明显重写或需要确认**的 1–2 组 Before → After
+- 每组最多 2–3 条 bullet
+- 每条可附 1 行 JD 关键词说明
+
+工作产物要求：
+- 最终用于 LaTeX 的经历段落，仍应形成完整的 3–5 条 optimized bullets
+- 若用户明确要求“看完整改写过程”，再展开全部 raw → optimized 对照
 
 ### Step 6.4：Language Lint（生成后自检，必须通过）
 在进入 LaTeX 之前，对所有 bullets 做一次 lint：
@@ -579,10 +677,19 @@ lint 未通过不得进入 Phase 7。
 - 使用 `RESUME_TEMPLATE.tex` 作为风格基底（默认更紧凑的 margin/间距）。
 - 按 `section_order` 输出 section 顺序。
 - 按 `privacy` 执行脱敏（company/project 替换）。
+- `headline.summary` 仅在其能明显增强匹配且仍可维持 1 页时渲染；否则省略。
+- `awards` 默认并入 `Education` 或相关经历 highlight；只有高相关且页数允许时才单独成节。
 
 **必须做内容清洗：**
 - 禁止输出空 bullet / 占位符（例如只包含 `•` 或空的 `\item`）。
 - 删除明显无意义的残片（例如只有符号、只有百分号、只有箭头）。
+- 在写入 LaTeX 前必须执行 `sanitize_for_latex`：
+  - 转义特殊字符：`\`、`{`、`}`、`%`、`&`、`$`、`#`、`_`、`^`、`~`
+  - 统一空白字符与换行，去掉不可见控制字符
+  - 链接 / 邮箱 / 外部 URL 必须使用 `\href{}` 或 `\url{}`
+  - 对过长 URL 优先保留可读 label，避免裸链撑爆版面
+  - 若遇到 emoji、花体符号、非常规 Unicode 标点，默认替换为稳定的 ASCII 或常规文本，除非用户明确要求保留
+- `sanitize_for_latex` 必须在脱敏之后执行，避免替换文本引入新的转义问题。
 
 ### Step 7.3：编译 PDF（必须成功）
 优先顺序：
@@ -641,6 +748,23 @@ lint 未通过不得进入 Phase 7。
 
 每次迭代必须说明：改了什么、为什么改（≤6 行）。
 
+默认输出纪律：
+- 内部保留完整迭代日志；
+- 对用户默认只总结“最终采用了哪几档压缩”和“为什么这么做”。
+
+#### 7.6.3 Hard Stop（达到阈值后必须升级处理）
+若出现以下任一情况，必须停止继续自动压缩，并向用户升级说明：
+- 已达到 `MAX_ITERS` 仍无法回到 1 页；
+- 继续压缩将删除 must-have 证据或明显损伤匹配度；
+- 继续压缩只剩下大幅缩小字号/过度挤压排版这类不推荐手段。
+
+此时你必须给用户一个简短升级说明：
+1) 目前为什么还超页（最多 3 个根因）
+2) 你已经自动做过哪些压缩
+3) 接下来的 2 个选项（例如“删除某段备选经历” / “接受两页版本”）
+
+在用户做出选择前，不得继续盲目压缩。
+
 ### Step 7.7：生成最终文件名并重命名
 - 依据 Phase 0.5 的规则生成 `<RESUME_FILENAME>`。
 - 将 `.claude-resume/output/resume.pdf` 复制/重命名为：
@@ -664,4 +788,3 @@ lint 未通过不得进入 Phase 7。
 
 - 指标：Latency / Cost / Conversion / Retention / DAU / Revenue / SLA / Error rate / Throughput / Cycle time / NPS
 - 方法：A/B test / caching / batching / refactor / observability / pipeline / RLS / CI/CD / load testing
-
